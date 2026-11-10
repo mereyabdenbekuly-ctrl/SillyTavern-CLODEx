@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CLODEx extension — mock integration</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  *{box-sizing:border-box}body{margin:0;padding:24px;font:15px/1.4 system-ui;color:#e2e3e5;background:#171a20}h1{font-size:20px;margin:0 0 8px}p{color:#adb5bd}button,input,select{font:inherit;color:inherit}button{cursor:pointer}.text_pole,select,input[type=file]{padding:9px;background:#262b34;border:1px solid #454c58;border-radius:6px}button.menu_button{padding:7px 10px;background:#2c333c;border:1px solid #4a535f;border-radius:6px}button:hover{background:#3d4956}button:disabled{opacity:.4;cursor:wait}label.checkbox_label{display:flex}main{display:grid;grid-template-columns:440px minmax(0,1fr);gap:28px;margin-top:20px}.extension_container,.mes{background:#20252d;border:1px solid #353d48;border-radius:12px;padding:16px}.inline-drawer-header{padding:4px 0 12px}.mes{margin:10px 0}.mes_text{margin:14px 0}.mes img,.mes video{max-width:100%;max-height:360px;border-radius:8px}#send_textarea{width:100%;height:85px;background:#242b35;color:inherit;border:1px solid #444e5b;border-radius:8px;padding:10px}#results{padding:12px;border-radius:8px;background:#293a29;color:#c6e9b3;white-space:pre-wrap}#results[data-failed=true]{background:#582626;color:#ffd5d5}#chat{position:sticky;top:10px}#native-controls{display:none}@media(max-width:760px){main{grid-template-columns:1fr}body{padding:12px}#chat{position:static}}
+</style></head>
+<body>
+<h1>CLODEx for SillyTavern — browser integration harness</h1>
+<p>Mock SillyTavern + mock CLODEx. No real keys, no paid requests. This is not a live RP chat.</p>
+<div id="results" role="status">Starting…</div>
+<main><section id="extensions_settings"></section><section><div id="chat"></div><textarea id="send_textarea" aria-label="Message composer"></textarea></section></main>
+<div id="native-controls"><input id="custom_api_url_text"><input id="custom_model_id"><select id="main_api"><option value="openai">openai</option></select><select id="chat_completion_source"><option value="custom">custom</option></select><button id="api_button_openai">Connect</button></div>
+<script type="module" src="/tests/browser-harness.js"></script>
+</body></html>

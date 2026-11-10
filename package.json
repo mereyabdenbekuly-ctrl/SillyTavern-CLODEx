@@ -1,0 +1,19 @@
+{
+  "name": "sillytavern-clodex",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-only CLODEx connector for SillyTavern",
+  "license": "MIT",
+  "homepage": "https://github.com/mereyabdenbekuly-ctrl/SillyTavern-CLODEx",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mereyabdenbekuly-ctrl/SillyTavern-CLODEx.git"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

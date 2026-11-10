@@ -1,0 +1,63 @@
+<div id="clodex-settings" class="extension_container">
+  <div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+      <b>CLODEx <span class="clodex-badge">0.1.0</span></b>
+      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+      <div class="clodex-panel">
+        <div class="clodex-heading"><div><h3 data-clodex-i18n="title"></h3><p data-clodex-i18n="subtitle"></p></div>
+          <label><span class="clodex-sr-only" data-clodex-i18n="language"></span><select data-setting="language" class="text_pole"><option value="auto">Auto</option><option value="ru-ru">RU</option><option value="en-us">EN</option></select></label>
+        </div>
+        <label class="clodex-field"><span data-clodex-i18n="key"></span><input data-role="key" class="text_pole" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></label>
+        <p class="clodex-help" data-clodex-i18n="keyHelp"></p>
+        <div class="clodex-actions"><button class="menu_button clodex-primary" data-action="refresh" data-clodex-i18n="connect"></button><button class="menu_button" data-action="forget" data-clodex-i18n="forget"></button></div>
+        <p data-role="status" class="clodex-status" role="status" aria-live="polite"></p>
+        <div class="clodex-balance"><div><small data-clodex-i18n="quota"></small><strong data-role="balance">—</strong></div><div><small data-clodex-i18n="rubEstimate"></small><strong data-role="rub">—</strong></div></div>
+        <p class="clodex-help" data-clodex-i18n="quotaHelp"></p>
+        <label class="checkbox_label"><input type="checkbox" data-setting="publicMetadataProxy"><span data-clodex-i18n="proxy"></span></label>
+        <p class="clodex-help" data-clodex-i18n="proxyHelp"></p>
+
+        <details open><summary data-clodex-i18n="textTitle"></summary>
+          <label class="clodex-field"><span data-clodex-i18n="textModel"></span><select data-setting="textModel" data-model-kind="text" class="text_pole"></select></label>
+          <button class="menu_button" data-action="activate" data-clodex-i18n="activate"></button>
+          <p class="clodex-help" data-clodex-i18n="activateHelp"></p>
+          <label class="clodex-field"><span data-clodex-i18n="search"></span><input data-role="search" class="text_pole" type="search"></label>
+          <div class="clodex-catalog" data-role="catalog"></div>
+          <p class="clodex-help" data-clodex-i18n="priceHelp"></p>
+        </details>
+
+        <details open><summary data-clodex-i18n="mediaTitle"></summary>
+          <label class="clodex-field"><span data-clodex-i18n="imageModel"></span><select data-setting="imageModel" data-model-kind="image" class="text_pole"></select></label>
+          <div class="clodex-grid"><label class="clodex-field"><span data-clodex-i18n="size"></span><input data-setting="imageSize" class="text_pole" placeholder="1024x1024"></label><label class="clodex-field"><span data-clodex-i18n="quality"></span><input data-setting="imageQuality" class="text_pole" placeholder="auto / high"></label></div>
+          <label class="clodex-field"><span data-clodex-i18n="videoModel"></span><select data-setting="videoModel" data-model-kind="video" class="text_pole"></select></label>
+          <label class="clodex-field"><span data-clodex-i18n="duration"></span><input data-setting="videoSeconds" class="text_pole" type="number" min="1" max="60" step="1"></label>
+          <p class="clodex-help" data-clodex-i18n="parametersHelp"></p>
+          <label class="checkbox_label"><input type="checkbox" data-setting="quietPrompt"><span data-clodex-i18n="quietPrompt"></span></label>
+          <p class="clodex-help" data-clodex-i18n="contextHelp"></p>
+          <label class="checkbox_label"><input type="checkbox" data-setting="autoImages"><span data-clodex-i18n="autoImages"></span></label>
+          <label class="checkbox_label"><input type="checkbox" data-setting="confirmPaid"><span data-clodex-i18n="confirmPaid"></span></label>
+          <label class="checkbox_label"><input type="checkbox" data-setting="autoplayVideo"><span data-clodex-i18n="autoplay"></span></label>
+          <label class="checkbox_label"><input type="checkbox" data-setting="loopVideo"><span data-clodex-i18n="loop"></span></label>
+        </details>
+
+        <details><summary data-clodex-i18n="audioTitle"></summary>
+          <label class="clodex-field"><span data-clodex-i18n="speechModel"></span><select data-setting="speechModel" data-model-kind="speech" class="text_pole"></select></label>
+          <label class="clodex-field"><span data-clodex-i18n="voice"></span><input data-setting="voice" class="text_pole"></label>
+          <label class="clodex-field"><span data-clodex-i18n="transcriptionModel"></span><select data-setting="transcriptionModel" data-model-kind="transcription" class="text_pole"></select></label>
+          <label class="clodex-field"><span data-clodex-i18n="audioFile"></span><input data-role="audio-file" type="file" accept="audio/*"></label>
+          <button class="menu_button" data-action="transcribe" data-clodex-i18n="transcribe"></button>
+          <p class="clodex-help" data-clodex-i18n="transcribeHelp"></p>
+        </details>
+
+        <details><summary>Tool Calling</summary>
+          <label class="checkbox_label"><input type="checkbox" data-setting="toolImages"><span>clodex_generate_image</span></label>
+          <label class="checkbox_label"><input type="checkbox" data-setting="toolVideos"><span>clodex_generate_video</span></label>
+          <p class="clodex-help" data-clodex-i18n="toolHelp"></p>
+        </details>
+        <p class="clodex-help clodex-commands">/clodex-img · /clodex-video · /clodex-say · /clodex-resume · /clodex-cancel</p>
+        <p class="clodex-help" data-clodex-i18n="promoHelp"></p>
+      </div>
+    </div>
+  </div>
+</div>
