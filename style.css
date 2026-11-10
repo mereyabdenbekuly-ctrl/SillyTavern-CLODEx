@@ -8,6 +8,7 @@
 #clodex-settings .clodex-field > span { font-size: .88em; font-weight: 600; }
 #clodex-settings .clodex-field input, #clodex-settings .clodex-field select { width: 100%; min-width: 0; }
 #clodex-settings .clodex-actions, .clodex-message-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+#clodex-settings button.menu_button, .clodex-message-actions button, .clodex-job button { width: fit-content; max-width: 100%; }
 #clodex-settings .clodex-primary { border-color: var(--clodex-accent); }
 #clodex-settings .clodex-badge { font-size: 10px; font-weight: normal; border: 1px solid var(--clodex-border); border-radius: 5px; padding: 2px 5px; margin-inline-start: 5px; }
 #clodex-settings .clodex-balance, #clodex-settings .clodex-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -34,5 +35,6 @@
 .clodex-job button { font-size: 1em; }
 .clodex-audio { display: grid; gap: 5px; margin-block: 10px; }
 .clodex-audio audio { max-width: 100%; width: 100%; }
+#clodex-settings [data-role="recording-preview"] { max-width: 100%; width: 100%; }
 .clodex-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 @media (max-width: 430px) { #clodex-settings .clodex-grid { grid-template-columns: 1fr; } }

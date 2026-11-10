@@ -1,17 +1,21 @@
 {
   "display_name": "CLODEx for SillyTavern",
-  "loading_order": 100,
+  "loading_order": 5,
   "requires": [],
   "optional": [],
   "js": "index.js",
   "css": "style.css",
   "author": "CLODEx",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minimum_client_version": "1.19.0",
   "homePage": "https://github.com/mereyabdenbekuly-ctrl/SillyTavern-CLODEx",
   "auto_update": true,
   "i18n": {
     "en-us": "i18n/en-us.json",
     "ru-ru": "i18n/ru-ru.json"
+  },
+  "hooks": {
+    "activate": "activate",
+    "disable": "deactivate"
   }
 }

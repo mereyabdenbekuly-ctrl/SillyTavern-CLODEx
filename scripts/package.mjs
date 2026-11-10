@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await readFile(resolve(root, 'manifest.json'), 'utf8'));
 const files = ['manifest.json', 'index.js', 'settings.html', 'style.css', 'README.md', 'README.en.md', 'LICENSE', 'CHANGELOG.md',
-    'src/api.js', 'src/catalog.js', 'src/chat.js', 'src/controller.js', 'src/ui.js',
+    'src/api.js', 'src/catalog.js', 'src/chat.js', 'src/controller.js', 'src/ui.js', 'src/microphone.js', 'src/tts.js',
     'i18n/en-us.json', 'i18n/ru-ru.json', 'docs/COMPATIBILITY.md', 'docs/ROADMAP.md'];
 function crc32(buffer) {
     let crc = 0xffffffff;

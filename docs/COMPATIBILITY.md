@@ -1,9 +1,9 @@
-# Contract audit — 2026-11-10
+# Contract audit — 2026-11-11
 
 ## Primary references
 
-- SillyTavern release 1.19.0, commit `06bde939fb1e9c4c8d8641d810f0a916b5bce127`:
-  https://github.com/SillyTavern/SillyTavern/tree/06bde939fb1e9c4c8d8641d810f0a916b5bce127
+- SillyTavern release 1.19.0, commit `7e8663cd9c184a550b37238218bdd32c6efc68e9`:
+  https://github.com/SillyTavern/SillyTavern/tree/7e8663cd9c184a550b37238218bdd32c6efc68e9
 - User-provided design references (examined, not imported as dependencies/copied):
   - https://github.com/niemandswasser/sillywardrobe3-0 at `e75814dc4dc45d91a0d4f4a812f1dcb507b8110a`
   - https://github.com/0xl0cal/sillyimages at `2c5ef77ecd4f59d817c54479ed9e3cfa12283cf4`
@@ -18,6 +18,8 @@ user's existing SillyTavern server. No reference extension/server patches are re
 | --- | --- |
 | `public/scripts/st-context.js` | `SillyTavern.getContext`, settings, events, slash commands, function tools, chat save and rendering |
 | `public/script.js` | `generateQuietPrompt({ quietPrompt, skipWIAN, quietToLoud, responseLength })`, `updateMessageBlock`, native media arrays |
+| `public/scripts/extensions.js` | Awaited `hooks.activate` / `hooks.disable`; order 5 precedes built-in TTS order 10 |
+| `public/scripts/extensions/tts/index.js` | `registerTtsProvider`, provider Responses, voice maps, native `/speak` and safe preview metadata |
 | `public/scripts/constants.js` | String media types `image`, `video`, `audio`; `media_display=list` |
 | `public/scripts/extensions/stable-diffusion/index.js` | Native media attachment shape, function-tool registration and persistence |
 | `public/scripts/openai.js` | Custom OpenAI URL/model/source controls and settings |
@@ -27,7 +29,7 @@ user's existing SillyTavern server. No reference extension/server patches are re
 | `src/middleware/corsProxy.js` | Public-metadata workaround; proxy serializes JSON and is not used for multipart |
 
 SillyTavern secrets cannot generally be read back without `allowKeysExposure`.
-This extension does **not** require or enable it. Version 0.2.0 optionally remembers
+This extension does **not** require or enable it. Version 0.3.0 optionally remembers
 the media key in unencrypted profile extension settings, with an adjacent warning
 and a tab-only opt-out. Native Secrets are written only on text activation.
 
@@ -36,7 +38,7 @@ and a tab-only opt-out. Native Secrets are written only on text activation.
 | Endpoint | Contract |
 | --- | --- |
 | `GET /v1/models` | `data[]` IDs; only this list grants catalog availability |
-| `GET /api/usage/token/` | `{ code, data: { total_available, unlimited_quota, expires_at, wallet_balance_quota, wallet_balance_usd, wallet_balance_rub, quota_per_unit, usd_to_rub } }`; additive wallet fields require the backend patch |
+| `GET /api/usage/token/` | `{ code, data: { total_available, unlimited_quota, expires_at, wallet_balance_quota, wallet_balance_usd, wallet_balance_rub, quota_per_unit, usd_to_rub } }`; deployed wallet fields are additive |
 | `GET /api/status` | `data.quota_per_unit`, custom currency symbol/rate |
 | `GET /api/pricing` | `data[].model_name`, `supported_endpoint_types`, fixed-total or ratio prices and cache fields |
 | `POST /v1/images/generations` | `{ model, prompt, n: 1, size?, quality? }`; `data[0].b64_json` or `.url` |
@@ -44,6 +46,7 @@ and a tab-only opt-out. Native Secrets are written only on text activation.
 | `GET /v1/videos/:id` | OpenAI-style `id,status,progress`; legacy `task_id`/`succeeded` accepted |
 | `GET /v1/videos/:id/content` | Authenticated video bytes; no direct-delivery/download query needed |
 | `POST /v1/audio/speech` | `{ model, input, voice, response_format: 'mp3' }`; audio bytes |
+| `GET /v1/audio/voices` | model/search/page/page_size → voices, has_more; unsupported model returns 400, manual voice remains possible |
 | `POST /v1/audio/transcriptions` | Multipart file/model; JSON text |
 
 Source audit locations in the CLODEx monorepo: `router/relay-router.go`,
@@ -52,23 +55,35 @@ Source audit locations in the CLODEx monorepo: `router/relay-router.go`,
 `dto/openai_video.go`, `dto/video.go`, `controller/video_proxy.go` and
 `relay/channel/task/artlist/request.go` under `deploy/new-api-src/new-api/`.
 
-Pre-patch read-only public probes: status and pricing returned 200, but no browser
-`Access-Control-Allow-Origin`; image endpoint OPTIONS returned 204 with CORS.
-Release status must be verified separately; no paid generation probes were performed. Local source
-contracts do not prove every deployed model supports every optional parameter.
+Narrow read-only CORS and wallet fields were deployed on November 11, 2026.
+Authenticated wallet queries remain owner-bound. No session/admin endpoints are
+opened by this rule. No paid generation probes were performed.
+
+`data.video_billing` version 1 describes current server billing:
+`funding_source=paid_wallet`, `promotional_balance_eligible=false`,
+`free_generation_available=false`, `paid_balance_usd=max(total-promo,0)/quota_per_unit`.
+It matches `service/billing_session.go` and reads a consistent `model.GetWalletQuota`
+snapshot. The extension neither changes billing nor grants promotional attempts.
 
 ## Verification boundary
 
-Unit tests cover transport, status normalization, prices, quota currency semantics,
-secret redaction, media safety/persistence, chat/swipe races, duplicate suppression,
-cancel/resume and no-repeat billing. The browser harness uses the real extension
-modules against a mock SillyTavern context/API. It is **not** a paid provider test
-or a substitute for acceptance in an installed SillyTavern instance.
+- Node unit tests: transport/redaction, pricing/currency semantics, media safety,
+  chat/swipe races, duplicate POST prevention, cancellation/resume, recording
+  permission/size/time limits, native TTS lifecycle and safe voice metadata.
+- Isolated browser harness: real extension modules, fake host context/API, native
+  MP4 decoding, serialization, microphone and native-provider registration adapter.
+- Installed SillyTavern 1.19.0: real character/settings/Secrets/files/chat APIs,
+  actual image/video/audio renderer, native voice map and `/speak`, ToolManager,
+  fake-device microphone, RU/EN, F5 key/provider restoration and disable lifecycle.
+  Every external HTTPS request is intercepted; CLODEx responses are mocked and
+  other upstream requests are blocked. No real credentials or paid calls.
 
-This repository is published as a **preview**, not a production-ready or fully
-accepted implementation of the requested specification. See [ROADMAP.md](ROADMAP.md).
+The host test runner is `tests/installed-host.mjs`. Use an isolated loopback profile
+with first-run onboarding completed, and point `PLAYWRIGHT_MODULE` / `CHROME_PATH`
+at local test dependencies. Never point it at a real user's profile.
 
-Before a stable release: install on a clean 1.19.0+ profile; verify Custom OpenAI secret
-selection, streaming RP, group scenes, native playback after reload, CORS/network
-failure messages, and one owner-approved image/video/audio generation per supported
-provider family. Do not declare stable/provider-wide compatibility before those gates.
+This is a **public preview**, not certification of all deployed models. Before a
+stable release verify streaming RP, full LLM-driven tools, model-specific media
+parameters and one owner-approved paid generation per advertised provider family.
+See [ROADMAP.md](ROADMAP.md). Git installation accepts the repository URL only;
+manifest/ZIP domain mirrors are downloads, not a substitute for Git auto-updates.

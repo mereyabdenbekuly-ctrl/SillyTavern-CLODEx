@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modelKinds, normalizeCatalog, priceView, quotaView, walletView } from '../src/catalog.js';
+import { modelKinds, normalizeCatalog, priceView, quotaView, walletView, videoBillingView } from '../src/catalog.js';
 
 test('catalog uses only live authorized model IDs, enriched by public prices', () => {
     const data = normalizeCatalog({ data: [{ id: 'custom-image', supported_endpoint_types: ['image-generation'] }, { id: 'text' }, { id: 'text' }] },
@@ -63,4 +63,16 @@ test('wallet parser preserves zero/debt, never invents funds or a RUB exchange r
     assert.deepEqual(walletView({ data: { wallet_balance_usd: 0, usd_to_rub: 81.25 } }), { usd: 0, rub: 0 });
     assert.deepEqual(walletView({ data: { wallet_balance_usd: -1, usd_to_rub: 81.25 } }), { usd: -1, rub: -81.25 });
     assert.deepEqual(walletView({ data: { wallet_balance_usd: 4.5 } }, { data: { usd_exchange_rate: 7, custom_currency_symbol: '¥', custom_currency_exchange_rate: 7 } }), { usd: 4.5, rub: null });
+});
+
+test('video billing is unknown without the full authoritative policy and never invents free attempts', () => {
+    for (const data of [{}, { video_billing: {} }, { video_billing: { version: 2 } }, { video_billing: { version: 1, free_generation_available: true } }]) assert.equal(videoBillingView({ data }), null);
+    const policy = { version: 1, funding_source: 'paid_wallet', promotional_balance_eligible: false, free_generation_available: false, paid_balance_usd: 3 };
+    assert.deepEqual(videoBillingView({ data: { video_billing: policy } }), { paidOnly: true, freeAvailable: false, paidUSD: 3 });
+    for (const invalid of [-1, '3', null, Infinity]) assert.equal(videoBillingView({ data: { video_billing: { ...policy, paid_balance_usd: invalid } } }).paidUSD, null);
+});
+
+test('speech classification recognizes live ElevenLabs IDs and audio-speech endpoints', () => {
+    assert.ok(modelKinds({ id: 'eleven_v4' }).includes('speech'));
+    assert.ok(modelKinds({ id: 'future-voice', supported_endpoint_types: ['audio-speech'] }).includes('speech'));
 });

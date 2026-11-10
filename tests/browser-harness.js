@@ -8,6 +8,9 @@ const tools = new Map();
 const calls = [];
 let confirmations = 0;
 let savedSecrets = 0;
+let confirmationHook;
+const nativeProviders = new Map();
+const registerTtsProvider = (name, Provider) => nativeProviders.set(name, Provider);
 const polls = new Map();
 const context = {
     chatId: 'mock-chat', characterId: 0, name2: 'Мира',
@@ -68,7 +71,8 @@ async function mockFetch(input, options = {}) {
     if (path === '/api/pricing') return Response.json({ data: [{ model_name: 'claude-demo', usage_fixed_price: 0.4, cached_usage_fixed_price: 0.04 }] });
     if (path === '/api/status') return Response.json({ data: { quota_per_unit: 500000, custom_currency_symbol: '₽', custom_currency_exchange_rate: 81.25 } });
     if (path === '/api/usage/token/') return Response.json({ code: true, data: { total_available: 0, unlimited_quota: true,
-        wallet_balance_usd: 4.5, wallet_balance_rub: 365.625, quota_per_unit: 500000, usd_to_rub: 81.25 } });
+        wallet_balance_usd: 4.5, wallet_balance_rub: 365.625, quota_per_unit: 500000, usd_to_rub: 81.25,
+        video_billing: { version: 1, funding_source: 'paid_wallet', promotional_balance_eligible: false, free_generation_available: false, paid_balance_usd: 3 } } });
     if (path === '/v1/images/generations') return Response.json({ data: [{ b64_json: png }] });
     if (path === '/v1/videos' && options.method === 'POST') return Response.json({ id: 'video_mock', status: 'queued', progress: 0 });
     if (/\/v1\/videos\/[^/]+\/content$/.test(path)) return new Response(Uint8Array.from(atob(VIDEO_BASE64), c => c.charCodeAt(0)), { headers: { 'content-type': 'video/mp4' } });
@@ -77,12 +81,14 @@ async function mockFetch(input, options = {}) {
         return Response.json({ id: path.split('/').at(-1), status: count > 1 ? 'completed' : 'in_progress', progress: count > 1 ? 100 : 37 });
     }
     if (path === '/v1/audio/speech') return new Response(wav, { headers: { 'content-type': 'audio/wav' } });
+    if (path === '/v1/audio/voices') return Response.json({ voices: [{ name: 'Mock voice', voice_id: 'voice-mock', language: 'en' }], has_more: false });
     if (path === '/v1/audio/transcriptions') return Response.json({ text: 'Распознанная реплика.' });
     throw new Error(`Unexpected mock request ${path}`);
 }
 
 const initializeHarness = () => initialize({ getContext: () => context, fetchImpl: mockFetch,
-    confirm: () => { confirmations++; return true; }, writeSecret: async () => { savedSecrets++; return 'mock-secret-id'; } });
+    loadNativeTts: async () => ({ registerTtsProvider }),
+    confirm: () => { confirmations++; return confirmationHook ? confirmationHook() : true; }, writeSecret: async () => { savedSecrets++; return 'mock-secret-id'; } });
 let app = await initializeHarness();
 app.api.sleep = async () => new Promise(resolve => setTimeout(resolve, 15));
 globalThis.clodexHarness = { app, context, commands, tools, calls };
@@ -107,6 +113,16 @@ else try {
     check(app.root.querySelector('[data-role="catalog"]').querySelector('img') === null, 'Untrusted model IDs rendered as text (XSS)');
     set('textModel', 'claude-demo'); set('imageModel', 'gpt-image-demo'); set('videoModel', 'seedance-demo');
     set('speechModel', 'tts-demo'); set('transcriptionModel', 'whisper-demo');
+    await app.nativeReady;
+    check(nativeProviders.has('CLODEx'), 'Native TTS provider registered');
+    check(app.root.querySelector('[data-role="video-billing"]').textContent.includes('бесплатные видеогенерации недоступны'), 'Server paid-only video policy displayed, not a fake promo');
+    app.root.querySelector('[data-action="loadVoices"]').click();
+    await waitFor(() => app.root.querySelector('#clodex-voice-options option'));
+    check(app.root.querySelector('#clodex-voice-options option').value === 'voice-mock', 'Provider voice catalog populates manual-ID suggestions');
+    const provider = new (nativeProviders.get('CLODEx'))();
+    await provider.loadSettings({ voiceMap: { Mira: 'voice-mock' } });
+    check((await provider.generateTts('Native speech', 'voice-mock')).headers.get('Content-Type') === 'audio/wav', 'Native TTS contract returns playable audio');
+    check(!JSON.stringify(provider.settings).includes('sk-test'), 'Native TTS settings never duplicate the API key');
     context.chatCompletionSettings.custom_include_headers = 'Authorization: old-provider-fixture';
     const connectionConfirmations = confirmations;
     app.root.querySelector('[data-action="activate"]').click(); await waitFor(() => savedSecrets === 1);
@@ -131,6 +147,24 @@ else try {
     transfer.items.add(new File([wav], 'voice.wav', { type: 'audio/wav' })); audioFile.files = transfer.files;
     app.root.querySelector('[data-action="transcribe"]').click(); await waitFor(() => document.querySelector('#send_textarea').value.includes('Распознанная'));
     check(context.chat.length === 1, 'STT inserts text without sending');
+    await waitFor(() => calls.filter(c => c.path === '/api/usage/token/').length > 1);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    app.root.querySelector('[data-action="record"]').click(); await waitFor(() => app.recorder.state === 'recording');
+    await waitFor(() => app.recorder.session?.bytes > 0);
+    app.root.querySelector('[data-action="recordStop"]').click(); await waitFor(() => app.recorder.state === 'ready');
+    check(!app.root.querySelector('[data-role="recording-preview"]').hidden, 'Microphone recording is available for local preview before upload');
+    const sttBefore = calls.filter(c => c.path === '/v1/audio/transcriptions').length;
+    let confirmStt;
+    confirmationHook = () => new Promise(resolve => { confirmStt = resolve; });
+    app.root.querySelector('[data-action="transcribe"]').click(); await waitFor(() => confirmStt);
+    app.root.querySelector('[data-action="transcribe"]').click(); await new Promise(resolve => setTimeout(resolve, 0));
+    check(calls.filter(c => c.path === '/v1/audio/transcriptions').length === sttBefore, 'Recording stays local until confirmation');
+    confirmStt(true); confirmationHook = null;
+    await waitFor(() => calls.filter(c => c.path === '/v1/audio/transcriptions').length === sttBefore + 1);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    check(context.chat.length === 1, 'Microphone STT never sends a chat message or duplicates a paid POST');
+    app.root.querySelector('[data-action="recordDiscard"]').click(); await waitFor(() => !app.recorder.file);
+    check(app.root.querySelector('[data-role="recording-preview"]').hidden, 'Discard clears local audio preview');
     set('toolImages', true); set('confirmPaid', false); const before = confirmations;
     await tools.get('clodex_generate_image').action({ prompt: 'Selfie scene' });
     check(confirmations > before, 'Tool generation requires separate consent');

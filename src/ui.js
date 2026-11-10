@@ -1,11 +1,14 @@
 import { ApiError, ClodexApi, redact, validateKey } from './api.js';
-import { normalizeCatalog, priceView, quotaView, walletView } from './catalog.js';
+import { normalizeCatalog, priceView, quotaView, walletView, videoBillingView } from './catalog.js';
 import { activateTextModel, captureTarget, jobsFor, loadSettings, localMediaPath, storeKey } from './chat.js';
 import { GenerationController } from './controller.js';
+import { MicrophoneRecorder } from './microphone.js';
+import { createNativeTtsProvider, normalizeVoices, registerNativeTts } from './tts.js';
 
 export async function initialize({ getContext = () => globalThis.SillyTavern.getContext(),
     fetchImpl = globalThis.fetch.bind(globalThis), document = globalThis.document,
-    confirm = message => globalThis.confirm(message), writeSecret, persistMedia } = {}) {
+    confirm = message => globalThis.confirm(message), writeSecret, persistMedia,
+    microphoneOptions = {}, loadNativeTts = () => import('/scripts/extensions/tts/index.js') } = {}) {
     if (document.querySelector('#clodex-settings')) return;
     const context = getContext();
     const settings = loadSettings(context);
@@ -28,6 +31,11 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
     let metadata = null;
     let refreshAbort;
     let speechAbort;
+    let voiceAbort;
+    let voiceList = [];
+    let voiceModel = '';
+    let nativeTtsState = 'nativeTtsLoading';
+    let recordingUrl = '';
     let disposed = false;
     let lastSecretId = '';
     let lastSecretKey = '';
@@ -46,11 +54,22 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         find('[data-role="status"]').textContent = text;
         find('[data-role="status"]').dataset.error = String(error);
     };
-    const report = error => status(error?.name === 'AbortError' ? t('stopped') : redact(error?.message ?? error, key), true);
+    const report = error => status(error?.name === 'AbortError' ? t('stopped')
+        : error?.code?.startsWith('mic_') ? t(error.code) : redact(error?.message ?? error, key), true);
     const api = new ClodexApi({ getKey: () => key, fetchImpl,
         publicProxy: () => settings.publicMetadataProxy, getRequestHeaders: () => getContext().getRequestHeaders() });
     const controller = new GenerationController({ api, getContext, settings, fetchImpl, persistMedia,
         render: renderMessages, confirm: (kind, model) => confirm(t('paidConfirm', { kind: t(kind), model })) });
+    const recorder = new MicrophoneRecorder({ ...microphoneOptions, onChange: renderMicrophone, onError: report });
+    const nativeTts = createNativeTtsProvider({ api, getKey: () => key, getSettings: () => settings,
+        voices: async () => {
+            if (voiceModel === settings.speechModel && voiceList.length) return voiceList;
+            return loadVoices();
+        }, confirm: model => confirm(t('paidConfirm', { kind: 'TTS', model })), onComplete: refreshBalance, onError: report,
+        previewText: () => t('voicePreview'),
+        settingsHtml: () => {
+            const hint = document.createElement('p'); hint.textContent = t('nativeTtsHelp'); return hint.outerHTML;
+        } });
     const button = (label, action) => {
         const element = document.createElement('button');
         element.type = 'button'; element.className = 'menu_button'; element.textContent = label;
@@ -58,6 +77,37 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         return element;
     };
     const money = value => new Intl.NumberFormat(locale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 6 }).format(value);
+
+    function renderMicrophone() {
+        const preview = find('[data-role="recording-preview"]');
+        if (recordingUrl) { URL.revokeObjectURL(recordingUrl); recordingUrl = ''; }
+        preview.pause(); preview.removeAttribute('src'); preview.hidden = !recorder.file;
+        if (recorder.file) { recordingUrl = URL.createObjectURL(recorder.file); preview.src = recordingUrl; }
+        find('[data-role="microphone-status"]').textContent = t(recorder.supported ? `mic_${recorder.state}` : 'mic_unsupported');
+        find('[data-action="record"]').disabled = !recorder.supported || recorder.busy;
+        find('[data-action="recordStop"]').disabled = recorder.state !== 'recording';
+        find('[data-action="recordDiscard"]').disabled = recorder.state === 'idle';
+    }
+
+    async function loadVoices() {
+        validateKey(key);
+        if (!settings.speechModel) throw new ApiError(t('selectSpeechModel'));
+        voiceAbort?.abort();
+        const own = new AbortController(); voiceAbort = own;
+        const requestKey = key, model = settings.speechModel;
+        try {
+            const response = await api.voices(model, { search: find('[data-role="voice-search"]').value, signal: own.signal });
+            own.signal.throwIfAborted();
+            if (disposed || requestKey !== key || model !== settings.speechModel) return [];
+            const list = normalizeVoices(response);
+            voiceList = list; voiceModel = model;
+            find('#clodex-voice-options').replaceChildren(...list.map(voice => {
+                const option = document.createElement('option'); option.value = voice.voice_id; option.label = voice.name; return option;
+            }));
+            find('[data-role="voice-status"]').textContent = t(response.has_more ? 'voicesMore' : 'voicesLoaded', { count: list.length });
+            return list;
+        } finally { if (voiceAbort === own) voiceAbort = null; }
+    }
 
     function describePrice(price) {
         const p = priceView(price);
@@ -112,6 +162,10 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         find('[data-role="balance"]').textContent = '—'; find('[data-role="rub"]').textContent = '—';
         find('[data-role="balance-label"]').textContent = t('wallet');
         find('[data-role="allowance"]').textContent = '';
+        const video = videoBillingView(quota);
+        find('[data-role="video-billing"]').textContent = video
+            ? t('videoPaidOnly') + (video.paidUSD === null ? '' : ` ${t('videoPaidBalance', { value: money(video.paidUSD) })}`)
+            : t('videoBillingUnknown');
         if (!quota) return;
         const value = quotaView(quota, metadata);
         const wallet = walletView(quota, metadata);
@@ -198,7 +252,11 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         const entered = find('[data-role="key"]').value.trim();
         if (entered) {
             const next = validateKey(entered);
-            if (next !== key) { controller.cancel(); speechAbort?.abort(); }
+            if (next !== key) {
+                controller.cancel(); speechAbort?.abort(); nativeTts.cancel(); recorder.cancel(); voiceAbort?.abort();
+                voiceList = []; voiceModel = ''; find('#clodex-voice-options').replaceChildren();
+                find('[data-role="voice-status"]').textContent = '';
+            }
             key = next; find('[data-role="key"]').value = '';
             storeKey(settings, key); getContext().saveSettingsDebounced();
         }
@@ -260,18 +318,21 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
 
     async function transcribe() {
         validateKey(key);
-        if (speechAbort || controller.active) throw new ApiError('A CLODEx operation is already running.');
+        if (speechAbort || controller.active || recorder.busy) throw new ApiError(t('operationRunning'));
         const model = settings.transcriptionModel;
-        const file = find('[data-role="audio-file"]').files[0];
+        const file = recorder.file || find('[data-role="audio-file"]').files[0];
         if (!model || !file) throw new ApiError('Select a transcription model and an audio file.');
         const chat = getContext().chat;
         const chatId = getContext().getCurrentChatId?.() ?? getContext().chatId;
-        if (!await confirm(t('paidConfirm', { kind: 'STT', model }))) return;
-        if (chat !== getContext().chat || chatId !== (getContext().getCurrentChatId?.() ?? getContext().chatId)) return;
-        speechAbort = new AbortController();
+        const requestKey = key;
+        const own = new AbortController(); speechAbort = own;
         try {
-            const text = await api.transcribe({ model, file }, speechAbort.signal);
-            speechAbort.signal.throwIfAborted();
+            if (!await confirm(t('paidConfirm', { kind: 'STT', model }))) return;
+            own.signal.throwIfAborted();
+            if (requestKey !== key || model !== settings.transcriptionModel || chat !== getContext().chat
+                || chatId !== (getContext().getCurrentChatId?.() ?? getContext().chatId)) return;
+            const text = await api.transcribe({ model, file }, own.signal);
+            own.signal.throwIfAborted();
             if (chat !== getContext().chat || chatId !== (getContext().getCurrentChatId?.() ?? getContext().chatId)) return;
             const input = document.querySelector('#send_textarea');
             if (!input) throw new ApiError('SillyTavern composer unavailable.');
@@ -279,7 +340,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             input.dispatchEvent(new Event('input', { bubbles: true }));
             status(t('transcribed'));
             await refreshBalance();
-        } finally { speechAbort = null; }
+        } finally { if (speechAbort === own) speechAbort = null; }
     }
 
     function registerTools() {
@@ -315,7 +376,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             }));
         }
         c.SlashCommandParser.addCommandObject(c.SlashCommand.fromProps({ name: 'clodex-cancel', callback: () => {
-            controller.cancel(); speechAbort?.abort(); status(t('stopped')); return '';
+            controller.cancel(); speechAbort?.abort(); recorder.cancel(); nativeTts.cancel(); status(t('stopped')); return '';
         }, helpString: 'Stop local polling. Does not cancel or refund a submitted server task.' }));
         c.SlashCommandParser.addCommandObject(c.SlashCommand.fromProps({ name: 'clodex-resume', namedArgumentList: named(), callback: async args => {
             try {
@@ -330,6 +391,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
 
     root.addEventListener('change', async event => {
         const field = event.target;
+        if (field.dataset.role === 'audio-file') recorder.cancel();
         const name = field.dataset.setting;
         if (!name) return;
         let value = field.type === 'checkbox' ? field.checked : field.value;
@@ -339,13 +401,23 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         }
         if (typeof value === 'string') value = value.slice(0, 200);
         settings[name] = value;
+        if (name === 'speechModel' || name === 'voice') { nativeTts.cancel(); }
+        if (name === 'speechModel') {
+            voiceAbort?.abort(); voiceList = []; voiceModel = ''; find('#clodex-voice-options').replaceChildren();
+            find('[data-role="voice-status"]').textContent = '';
+        }
         if (name === 'rememberKey') storeKey(settings, key);
         getContext().saveSettingsDebounced();
         if (name === 'toolImages' || name === 'toolVideos') registerTools();
-        if (name === 'language') renderStatic(); else renderMessages();
+        if (name === 'language') { renderStatic(); renderMicrophone(); find('[data-role="native-tts-status"]').textContent = t(nativeTtsState); }
+        else renderMessages();
     });
-    const actions = { refresh, activate: () => activate(), transcribe, forget: () => {
-        controller.cancel(); refreshAbort?.abort(); speechAbort?.abort();
+    const actions = { refresh, activate: () => activate(), transcribe, loadVoices,
+        record: () => { if (speechAbort) throw new ApiError(t('operationRunning')); find('[data-role="audio-file"]').value = ''; return recorder.start(); },
+        recordStop: () => recorder.stop(), recordDiscard: () => recorder.cancel(), forget: () => {
+        controller.cancel(); refreshAbort?.abort(); speechAbort?.abort(); voiceAbort?.abort(); recorder.cancel(); nativeTts.cancel();
+        voiceList = []; voiceModel = ''; find('#clodex-voice-options').replaceChildren();
+        find('[data-role="voice-status"]').textContent = ''; find('[data-role="audio-file"]').value = '';
         key = ''; lastSecretKey = ''; lastSecretId = ''; quota = null; catalog = []; metadata = null;
         storeKey(settings, ''); getContext().saveSettingsDebounced();
         find('[data-role="key"]').value = ''; renderStatic(); status(t('forgotten'));
@@ -358,7 +430,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
     function on(type, callback) {
         if (type) { context.eventSource.on(type, callback); events.push([type, callback]); }
     }
-    on(types.CHAT_CHANGED, () => { controller.cancel(); speechAbort?.abort(); latestAutoIndex = null; renderMessages(); });
+    on(types.CHAT_CHANGED, () => { controller.cancel(); speechAbort?.abort(); recorder.cancel(); nativeTts.cancel(); latestAutoIndex = null; renderMessages(); });
     for (const type of [types.MESSAGE_DELETED, types.MESSAGE_SWIPED, types.MESSAGE_EDITED]) {
         on(type, () => { controller.cancel(); latestAutoIndex = null; renderMessages(); });
     }
@@ -371,13 +443,27 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         if (index !== null && settings.autoImages && key && !speechAbort) controller.autoImage(index).catch(report);
         renderMessages();
     });
-    registerCommands(); registerTools(); renderStatic();
+    registerCommands(); registerTools(); renderStatic(); renderMicrophone();
+    const stopMicrophone = () => recorder.cancel();
+    document.defaultView?.addEventListener('pagehide', stopMicrophone);
+    const nativeReady = Promise.resolve().then(async () => {
+        if (context.extensionSettings.disabledExtensions?.includes('tts')) throw new Error('Native TTS is disabled');
+        const module = await loadNativeTts();
+        if (disposed) return;
+        if (typeof module.registerTtsProvider !== 'function') throw new Error('Native TTS provider API unavailable');
+        registerNativeTts(module.registerTtsProvider, nativeTts);
+        nativeTtsState = 'nativeTtsReady';
+    }).catch(() => { nativeTtsState = 'nativeTtsUnavailable'; }).finally(() => {
+        if (!disposed) find('[data-role="native-tts-status"]').textContent = t(nativeTtsState);
+    });
     const ready = key ? refresh().catch(report) : Promise.resolve();
-    return { root, api, controller, refresh, renderMessages, ready,
+    return { root, api, controller, recorder, refresh, renderMessages, ready, nativeReady,
         dispose() {
-            disposed = true; controller.cancel(); refreshAbort?.abort(); speechAbort?.abort();
+            disposed = true; controller.cancel(); refreshAbort?.abort(); speechAbort?.abort(); voiceAbort?.abort(); recorder.cancel(); nativeTts.dispose();
+            document.defaultView?.removeEventListener('pagehide', stopMicrophone);
             for (const [type, callback] of events) context.eventSource.removeListener?.(type, callback);
             context.unregisterFunctionTool?.('clodex_generate_image'); context.unregisterFunctionTool?.('clodex_generate_video');
+            for (const element of document.querySelectorAll('#chat .clodex-message-actions, #chat .clodex-job, #chat .clodex-audio')) element.remove();
             root.remove(); key = ''; lastSecretKey = '';
         },
     };

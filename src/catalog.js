@@ -7,7 +7,7 @@ export function modelKinds(model, price = {}) {
     const video = endpoints.includes('openai-video') || /seedance|hailuo|wan[-_.]|kling|veo[-_.]|sora|video/.test(id);
     if (endpoints.includes('image-generation') || !video && /gpt-image|nano-banana|flux|seedream|dall-e|imagen|grok-imagine/.test(id)) kinds.add('image');
     if (video) kinds.add('video');
-    if (/tts|speech|voice|f5[-_]|cosyvoice/.test(id)) kinds.add('speech');
+    if (endpoints.includes('audio-speech') || /tts|speech|voice|f5[-_]|cosyvoice|eleven_(?:v\d|multilingual_v|turbo|flash)/.test(id)) kinds.add('speech');
     if (/whisper|transcrib|\bstt\b/.test(id)) kinds.add('transcription');
     if (!kinds.size && !/embed|rerank|moderation|music|suno|3d|rodin/.test(id)
         && (!endpoints.length || endpoints.includes('openai'))) kinds.add('text');
@@ -67,4 +67,14 @@ export function walletView(payload, metadata) {
             && finite(status?.custom_currency_exchange_rate) && status.custom_currency_exchange_rate > 0
             ? status.custom_currency_exchange_rate : null;
     return { usd, rub: signed(wallet.wallet_balance_rub) ? wallet.wallet_balance_rub : rate === null ? null : usd * rate };
+}
+
+// Missing policy is unknown, not a free allowance. This contract describes
+// billing enforced by the server; it never grants a client-side entitlement.
+export function videoBillingView(payload) {
+    const policy = payload?.data?.video_billing;
+    if (policy?.version !== 1 || policy?.funding_source !== 'paid_wallet'
+        || policy?.promotional_balance_eligible !== false || policy?.free_generation_available !== false) return null;
+    return { paidOnly: true, freeAvailable: false,
+        paidUSD: finite(policy.paid_balance_usd) ? policy.paid_balance_usd : null };
 }

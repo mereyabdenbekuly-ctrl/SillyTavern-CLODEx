@@ -1,9 +1,10 @@
-# CLODEx for SillyTavern · 0.2.0
+# CLODEx for SillyTavern · 0.3.0
 
 Standalone, build-free UI extension for **SillyTavern 1.19.0+**. A CLODEx `sk-…`
-API key is required. **MVP / preview 0.2.0: the full requested specification is not complete.**
-Acceptance in an installed SillyTavern instance and live paid-provider testing are still pending.
-No paid live generations were used in development; automated checks mock the API.
+API key is required. **0.3.0 public preview.** Text, images, video/I2V, native TTS,
+microphone/STT and model tools are implemented. Acceptance runs use installed
+SillyTavern 1.19.0 with mocked upstream APIs, not live paid-provider generations.
+See the [verification boundary](docs/COMPATIBILITY.md).
 
 [Русский](README.md) · [Readiness and limitations](docs/ROADMAP.md) · [MIT](LICENSE)
 
@@ -17,7 +18,7 @@ https://github.com/mereyabdenbekuly-ctrl/SillyTavern-CLODEx
 
 Confirm installation, reload, open **Extensions → CLODEx**, enter a key, refresh
 and select models. Use **Use for chat** to configure the text connection.
-Prices and currency conversion may need the public-metadata proxy setup below.
+No `enableCorsProxy` configuration is needed: narrow CORS and wallet fields are deployed.
 
 For a manual installation:
 
@@ -30,23 +31,23 @@ not a URL to `manifest.json` or a ZIP. Auto-updates require a Git installation.
 
 ## Features
 
-- Live `/v1/models`; public reference pricing, cache-read prices, wallet balance in USD/RUB and a separate API-key allowance (requires the matching backend patch).
+- Live `/v1/models`; public reference pricing, cache-read prices, wallet balance in USD/RUB and a separate API-key allowance.
 - One-click native **Custom OpenAI** configuration; RP presets and streaming remain native to SillyTavern.
 - `/clodex-img [prompt]`, `/clodex-video [prompt]`, `/clodex-say [text]` and per-message buttons.
 - `/clodex-video message=4 animate=true motion prompt` uses saved image bytes, never a localhost URL.
 - Native image/video/audio attachments, saved to SillyTavern's `user/files`.
 - Real video polling, progress, local stop and `/clodex-resume message=4` without resubmission.
 - Optional, rate-limited automatic illustrations; optional image/video function tools with per-call consent.
-- Speech API and audio-file transcription into the composer, without automatically sending it.
-- RU/EN and responsive settings. Voice is implemented by this extension's own controls, not a built-in TTS provider.
+- Native **CLODEx** TTS provider, per-character voice maps, provider voice search, manual voice IDs and paid voice previews.
+- Microphone recording (up to 2 minutes / 24 MB), local preview/discard, or audio-file STT into the composer without sending it.
+- RU/EN and responsive settings. Key, native TTS selection and voice maps survive F5.
 
 ## Wallet and direct CORS
 
-**At 0.2.0 publication the server patch is not deployed:** direct metadata
-access and the actual wallet on clodex.xyz are still blocked.
-See [CHANGELOG.md](CHANGELOG.md) for rollout status and verification limits.
+**Narrow CORS and wallet fields were deployed on November 11, 2026.**
+Direct browser access from localhost works without changing `config.yaml`.
 
-The matching backend patch must allow credentialless browser GET/OPTIONS on exactly
+The backend allows credentialless browser GET/OPTIONS on exactly
 `/api/pricing`, `/api/status`, `/api/usage/token/`. Wallet requests still require a
 Bearer key. New fields include `wallet_balance_usd`, `wallet_balance_rub`,
 `quota_per_unit` and `usd_to_rub`; an unlimited key never means an unlimited wallet.
@@ -56,6 +57,18 @@ Publishing the extension does not deploy the backend. The old optional public
 metadata proxy remains available for legacy servers only; it requires local
 `enableCorsProxy`, sends no CLODEx key and cannot fix the legacy protected
 usage-endpoint CORS. Normally leave it off once the backend patch is deployed.
+
+## Voice and microphone
+
+Select a speech model and load/search voices in CLODEx settings. Supported ElevenLabs
+models expose a catalog; otherwise enter a valid provider voice ID manually. In native
+**TTS**, enable speech, choose **CLODEx**, and assign character voices. Click Refresh
+if TTS was disabled during startup. Voice previews use the same paid confirmation
+path; they are not free demos. No duplicate key is saved in native TTS settings.
+
+For STT, record locally, stop, preview/discard, then choose Transcribe to upload.
+HTTPS or localhost is required. Switching chats/keys or disabling the extension
+stops recording. Recognized text is never automatically sent.
 
 ## Safety and limits
 
@@ -86,7 +99,9 @@ up with `user/files`; a JSON chat export alone does not include those files.
 
 Maximum saved media: 100 MB; image reference: 20 MB; STT upload: 25 MB. Provider limits
 may be lower. JSON `image` support, sizes, duration, voices, model eligibility and
-promotions depend on CLODEx/provider capabilities. No free-video entitlement is assumed.
+promotions depend on CLODEx/provider capabilities. Video currently uses paid wallet funds only: promotional balance, Credits and
+subscriptions do not provide free attempts. The panel shows the server's versioned
+billing policy and paid balance; missing policy data is unknown, not a free quota.
 Quiet prompt composition may incur additional text costs and uses the configured
 SillyTavern text provider/context; explicit prompts skip it. Scene construction reads
 character appearance/scenario and up to four recent messages.
@@ -99,4 +114,4 @@ See [compatibility notes](docs/COMPATIBILITY.md) for verified upstream contracts
 
 Code is licensed under [MIT](LICENSE). This does not grant paid API access;
 model availability, limits and charges are controlled by CLODEx and providers.
-Publishing this extension does not deploy changes to the CLODEx website or API.
+The domain mirror is at https://clodex.xyz/sillytavern/; installation still uses the Git URL above.

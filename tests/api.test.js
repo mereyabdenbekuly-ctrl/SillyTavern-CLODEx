@@ -153,3 +153,13 @@ test('STT sends native multipart, without manually setting Content-Type or using
 test('task IDs cannot escape their path', () => {
     for (const value of ['', '../models', 'v?key=x', 'v/../x', null]) assert.throws(() => taskId(value));
 });
+
+test('voice catalog encodes search and model without leaking the key into the URL', async () => {
+    const { api, calls } = setup([json({ voices: [] })]);
+    await api.voices('eleven_v4', { search: 'RU & EN', page: 2 });
+    const url = new URL(calls[0].url);
+    assert.equal(url.origin, 'https://clodex.xyz'); assert.equal(url.pathname, '/v1/audio/voices');
+    assert.equal(url.searchParams.get('model'), 'eleven_v4'); assert.equal(url.searchParams.get('search'), 'RU & EN');
+    assert.equal(url.searchParams.get('page'), '2'); assert.equal(url.searchParams.get('page_size'), '100');
+    assert.equal(calls[0].headers.get('Authorization'), `Bearer ${KEY}`); assert.ok(!calls[0].url.includes(KEY));
+});

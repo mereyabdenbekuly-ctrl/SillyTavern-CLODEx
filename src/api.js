@@ -124,6 +124,10 @@ export class ClodexApi {
     quota(signal) { return this.request('/api/usage/token/', { signal }); }
     pricing(signal) { return this.request('/api/pricing', { signal, auth: false, timeout: 15_000 }); }
     status(signal) { return this.request('/api/status', { signal, auth: false, timeout: 15_000 }); }
+    voices(model, { search = '', page = 1, signal } = {}) {
+        const query = new URLSearchParams({ model, search, page: String(page), page_size: '100' });
+        return this.request(`/v1/audio/voices?${query}`, { signal });
+    }
 
     async image({ model, prompt, size, quality }, signal) {
         const body = { model, prompt, n: 1 };

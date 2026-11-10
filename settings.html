@@ -1,7 +1,7 @@
 <div id="clodex-settings" class="extension_container">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b>CLODEx <span class="clodex-badge">0.2.0</span></b>
+      <b>CLODEx <span class="clodex-badge">0.3.0</span></b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
@@ -33,6 +33,7 @@
           <label class="clodex-field"><span data-clodex-i18n="imageModel"></span><select data-setting="imageModel" data-model-kind="image" class="text_pole"></select></label>
           <div class="clodex-grid"><label class="clodex-field"><span data-clodex-i18n="size"></span><input data-setting="imageSize" class="text_pole" placeholder="1024x1024"></label><label class="clodex-field"><span data-clodex-i18n="quality"></span><input data-setting="imageQuality" class="text_pole" placeholder="auto / high"></label></div>
           <label class="clodex-field"><span data-clodex-i18n="videoModel"></span><select data-setting="videoModel" data-model-kind="video" class="text_pole"></select></label>
+          <p class="clodex-help" data-role="video-billing" role="status"></p>
           <label class="clodex-field"><span data-clodex-i18n="duration"></span><input data-setting="videoSeconds" class="text_pole" type="number" min="1" max="60" step="1"></label>
           <p class="clodex-help" data-clodex-i18n="parametersHelp"></p>
           <label class="checkbox_label"><input type="checkbox" data-setting="quietPrompt"><span data-clodex-i18n="quietPrompt"></span></label>
@@ -45,9 +46,23 @@
 
         <details><summary data-clodex-i18n="audioTitle"></summary>
           <label class="clodex-field"><span data-clodex-i18n="speechModel"></span><select data-setting="speechModel" data-model-kind="speech" class="text_pole"></select></label>
-          <label class="clodex-field"><span data-clodex-i18n="voice"></span><input data-setting="voice" class="text_pole"></label>
+          <label class="clodex-field"><span data-clodex-i18n="voice"></span><input data-setting="voice" class="text_pole" list="clodex-voice-options"></label>
+          <datalist id="clodex-voice-options"></datalist>
+          <label class="clodex-field"><span data-clodex-i18n="voiceSearch"></span><input data-role="voice-search" class="text_pole" type="search"></label>
+          <button class="menu_button" data-action="loadVoices" data-clodex-i18n="loadVoices"></button>
+          <p class="clodex-help" data-role="voice-status" role="status"></p>
+          <p class="clodex-help" data-role="native-tts-status" role="status"></p>
+          <p class="clodex-help" data-clodex-i18n="nativeTtsHelp"></p>
           <label class="clodex-field"><span data-clodex-i18n="transcriptionModel"></span><select data-setting="transcriptionModel" data-model-kind="transcription" class="text_pole"></select></label>
           <label class="clodex-field"><span data-clodex-i18n="audioFile"></span><input data-role="audio-file" type="file" accept="audio/*"></label>
+          <div class="clodex-actions">
+            <button class="menu_button" data-action="record" data-clodex-i18n="record"></button>
+            <button class="menu_button" data-action="recordStop" data-clodex-i18n="recordStop" disabled></button>
+            <button class="menu_button" data-action="recordDiscard" data-clodex-i18n="recordDiscard" disabled></button>
+          </div>
+          <p class="clodex-help" data-role="microphone-status" role="status" aria-live="polite"></p>
+          <audio data-role="recording-preview" controls hidden></audio>
+          <p class="clodex-help" data-clodex-i18n="recordHelp"></p>
           <button class="menu_button" data-action="transcribe" data-clodex-i18n="transcribe"></button>
           <p class="clodex-help" data-clodex-i18n="transcribeHelp"></p>
         </details>

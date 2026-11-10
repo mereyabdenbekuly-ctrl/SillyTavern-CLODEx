@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 preview — 2026-11-11
+
+- Native CLODEx TTS provider, safe voice catalog/search/manual IDs, paid preview, per-character voice map and reload-safe provider registration.
+- Local microphone recording with preview/discard and explicit STT upload, limits, cancellation and track cleanup.
+- Versioned server video billing display: paid wallet only, no invented promotional/free attempts.
+- Clean disable lifecycle; native TTS falls back to System with speech disabled.
+- Acceptance against installed SillyTavern 1.19.0, including F5, real native media/Secrets/ToolManager/TTS and fake-device microphone. Upstream requests remain mocked.
+- Dependency-free unit tests and isolated browser harness; no paid-provider-wide compatibility claim.
+- Matching docs/landing integration and integrity-pinned domain mirror prepared for the separate backend release.
+- Rollout update: the 0.2.0 narrow-CORS/wallet backend patch was accepted on November 11, 2026. The historical publication-time note below is not the current status.
+
 ## 0.2.0 preview — 2026-11-10
 
 ### Исправлено / Fixed
