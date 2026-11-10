@@ -27,15 +27,16 @@ user's existing SillyTavern server. No reference extension/server patches are re
 | `src/middleware/corsProxy.js` | Public-metadata workaround; proxy serializes JSON and is not used for multipart |
 
 SillyTavern secrets cannot generally be read back without `allowKeysExposure`.
-This extension does **not** require or enable it: it keeps a separate in-memory key
-for browser media requests and writes the key only on explicit text-connection activation.
+This extension does **not** require or enable it. Version 0.2.0 optionally remembers
+the media key in unencrypted profile extension settings, with an adjacent warning
+and a tab-only opt-out. Native Secrets are written only on text activation.
 
 ## CLODEx interfaces checked in the existing source
 
 | Endpoint | Contract |
 | --- | --- |
 | `GET /v1/models` | `data[]` IDs; only this list grants catalog availability |
-| `GET /api/usage/token/` | `{ code, data: { total_available, unlimited_quota, expires_at } }`; raw quota |
+| `GET /api/usage/token/` | `{ code, data: { total_available, unlimited_quota, expires_at, wallet_balance_quota, wallet_balance_usd, wallet_balance_rub, quota_per_unit, usd_to_rub } }`; additive wallet fields require the backend patch |
 | `GET /api/status` | `data.quota_per_unit`, custom currency symbol/rate |
 | `GET /api/pricing` | `data[].model_name`, `supported_endpoint_types`, fixed-total or ratio prices and cache fields |
 | `POST /v1/images/generations` | `{ model, prompt, n: 1, size?, quality? }`; `data[0].b64_json` or `.url` |
@@ -51,9 +52,9 @@ Source audit locations in the CLODEx monorepo: `router/relay-router.go`,
 `dto/openai_video.go`, `dto/video.go`, `controller/video_proxy.go` and
 `relay/channel/task/artlist/request.go` under `deploy/new-api-src/new-api/`.
 
-Read-only public probes: status and pricing returned 200, but no browser
+Pre-patch read-only public probes: status and pricing returned 200, but no browser
 `Access-Control-Allow-Origin`; image endpoint OPTIONS returned 204 with CORS.
-No production mutations or paid generation probes were performed. Local source
+Release status must be verified separately; no paid generation probes were performed. Local source
 contracts do not prove every deployed model supports every optional parameter.
 
 ## Verification boundary

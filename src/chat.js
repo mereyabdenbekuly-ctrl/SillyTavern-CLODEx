@@ -1,4 +1,4 @@
-import { ApiError, MAX_MEDIA_BYTES, redact } from './api.js';
+import { ApiError, MAX_MEDIA_BYTES, redact, validateKey } from './api.js';
 
 export const SETTINGS_KEY = 'clodex';
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
     voice: 'alloy', imageSize: '', imageQuality: '', videoSeconds: '', publicMetadataProxy: false,
     quietPrompt: true, autoImages: false, toolImages: false, toolVideos: false, confirmPaid: true,
     autoplayVideo: false, loopVideo: true,
+    rememberKey: true, savedKey: '',
 });
 
 export function loadSettings(context) {
@@ -14,8 +15,16 @@ export function loadSettings(context) {
     for (const [key, fallback] of Object.entries(DEFAULT_SETTINGS)) {
         clean[key] = typeof stored[key] === typeof fallback ? stored[key] : fallback;
     }
+    // Profile settings are not a secret vault. This explicit convenience option
+    // is explained next to the checkbox; never copy the key into chat metadata.
+    try { clean.savedKey = clean.rememberKey && clean.savedKey ? validateKey(clean.savedKey) : ''; }
+    catch { clean.savedKey = ''; }
     context.extensionSettings[SETTINGS_KEY] = clean;
     return clean;
+}
+
+export function storeKey(settings, key) {
+    settings.savedKey = settings.rememberKey && key ? validateKey(key) : '';
 }
 
 export function captureTarget(context, index) {
@@ -143,7 +152,7 @@ export async function saveMedia(context, blob, { fetchImpl = globalThis.fetch.bi
     return localMediaPath((await response.json()).path);
 }
 
-export async function activateTextModel(context, { model, key, writeSecret, document = globalThis.document }) {
+export async function activateTextModel(context, { model, key, writeSecret, confirmResetOverrides = async () => false, document = globalThis.document }) {
     if (!model) throw new ApiError('Select a text model.');
     const urlField = document.querySelector('#custom_api_url_text');
     const modelField = document.querySelector('#custom_model_id');
@@ -153,15 +162,21 @@ export async function activateTextModel(context, { model, key, writeSecret, docu
     if (![urlField, modelField, apiField, sourceField, connect].every(Boolean) || !context.chatCompletionSettings) {
         throw new ApiError('Custom OpenAI connection controls are unavailable. Update SillyTavern.');
     }
-    if (['custom_include_headers', 'custom_include_body', 'custom_exclude_body']
-        .some(field => String(context.chatCompletionSettings[field] ?? '').trim())) {
-        throw new ApiError('Clear Custom OpenAI header/body overrides before switching to CLODEx. Existing overrides were not changed.');
-    }
+    const overrideFields = ['custom_include_headers', 'custom_include_body', 'custom_exclude_body'];
+    const hasOverrides = overrideFields.some(field => String(context.chatCompletionSettings[field] ?? '').trim());
+    if (hasOverrides && !await confirmResetOverrides()) return false;
     if (context.streamingProcessor && !context.streamingProcessor.isFinished) throw new ApiError('Wait for text generation to finish.');
     const id = await writeSecret('api_key_custom', key, 'CLODEx');
     if (!id) throw new ApiError('Could not save the key to SillyTavern Secrets.');
     // Do not route values through slash-command parsing: model IDs are untrusted remote data.
     const update = (element, value, event) => { element.value = value; element.dispatchEvent(new Event(event, { bubbles: true })); };
+    if (hasOverrides) {
+        for (const field of overrideFields) {
+            context.chatCompletionSettings[field] = '';
+            const control = document.querySelector(`#${field}`);
+            if (control) update(control, '', 'input');
+        }
+    }
     update(urlField, 'https://clodex.xyz/v1', 'input');
     update(modelField, model, 'input');
     update(apiField, 'openai', 'change');
@@ -169,6 +184,7 @@ export async function activateTextModel(context, { model, key, writeSecret, docu
     Object.assign(context.chatCompletionSettings, { custom_url: 'https://clodex.xyz/v1', custom_model: model, chat_completion_source: 'custom' });
     context.saveSettingsDebounced();
     connect.click();
+    return true;
 }
 
 export function jobError(error, key) {

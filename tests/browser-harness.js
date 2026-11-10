@@ -67,7 +67,8 @@ async function mockFetch(input, options = {}) {
     ] });
     if (path === '/api/pricing') return Response.json({ data: [{ model_name: 'claude-demo', usage_fixed_price: 0.4, cached_usage_fixed_price: 0.04 }] });
     if (path === '/api/status') return Response.json({ data: { quota_per_unit: 500000, custom_currency_symbol: '₽', custom_currency_exchange_rate: 81.25 } });
-    if (path === '/api/usage/token/') return Response.json({ code: true, data: { total_available: 18500000, unlimited_quota: false } });
+    if (path === '/api/usage/token/') return Response.json({ code: true, data: { total_available: 0, unlimited_quota: true,
+        wallet_balance_usd: 4.5, wallet_balance_rub: 365.625, quota_per_unit: 500000, usd_to_rub: 81.25 } });
     if (path === '/v1/images/generations') return Response.json({ data: [{ b64_json: png }] });
     if (path === '/v1/videos' && options.method === 'POST') return Response.json({ id: 'video_mock', status: 'queued', progress: 0 });
     if (/\/v1\/videos\/[^/]+\/content$/.test(path)) return new Response(Uint8Array.from(atob(VIDEO_BASE64), c => c.charCodeAt(0)), { headers: { 'content-type': 'video/mp4' } });
@@ -80,8 +81,9 @@ async function mockFetch(input, options = {}) {
     throw new Error(`Unexpected mock request ${path}`);
 }
 
-const app = await initialize({ getContext: () => context, fetchImpl: mockFetch,
+const initializeHarness = () => initialize({ getContext: () => context, fetchImpl: mockFetch,
     confirm: () => { confirmations++; return true; }, writeSecret: async () => { savedSecrets++; return 'mock-secret-id'; } });
+let app = await initializeHarness();
 app.api.sleep = async () => new Promise(resolve => setTimeout(resolve, 15));
 globalThis.clodexHarness = { app, context, commands, tools, calls };
 const checks = [];
@@ -99,14 +101,18 @@ if (!new URLSearchParams(location.search).has('auto')) results.textContent = 'Ma
 else try {
     check(app.root.textContent.includes('Ваши персонажи'), 'Russian UI loaded');
     app.root.querySelector('[data-role="key"]').value = 'sk-test-only-not-a-credential'; await app.refresh();
-    check(app.root.querySelector('[data-role="balance"]').textContent.includes('37'), 'Quota rendered from metadata');
+    check(app.root.querySelector('[data-role="balance"]').textContent.includes('4,5'), 'Wallet USD shown for an unlimited key');
+    check(app.root.querySelector('[data-role="rub"]').textContent.includes('365'), 'Actual wallet RUB shown separately');
     check(app.root.querySelector('[data-role="key"]').value === '', 'Key cleared from visible input');
     check(app.root.querySelector('[data-role="catalog"]').querySelector('img') === null, 'Untrusted model IDs rendered as text (XSS)');
     set('textModel', 'claude-demo'); set('imageModel', 'gpt-image-demo'); set('videoModel', 'seedance-demo');
     set('speechModel', 'tts-demo'); set('transcriptionModel', 'whisper-demo');
+    context.chatCompletionSettings.custom_include_headers = 'Authorization: old-provider-fixture';
+    const connectionConfirmations = confirmations;
     app.root.querySelector('[data-action="activate"]').click(); await waitFor(() => savedSecrets === 1);
     await waitFor(() => context.chatCompletionSettings.custom_model === 'claude-demo');
     check(document.querySelector('#custom_api_url_text').value === 'https://clodex.xyz/v1', 'Native text connection configured');
+    check(confirmations === connectionConfirmations + 2 && context.chatCompletionSettings.custom_include_headers === '', 'Previous provider overrides cleared only after explicit consent');
     const image = await commands.get('clodex-img').callback({}, 'Mock moonlit lake');
     check(image.startsWith('/user/files/'), 'Image saved as native local attachment');
     await commands.get('clodex-video').callback({ animate: 'true' }, 'Mock wind');
@@ -131,7 +137,30 @@ else try {
     app.renderMessages(); app.renderMessages();
     check(document.querySelectorAll('.clodex-message-actions').length === 1, 'Repeated renders do not duplicate controls');
     set('language', 'en-us'); check(app.root.textContent.includes('Your characters'), 'English locale switching'); set('language', 'ru-ru');
-    check(!JSON.stringify(context.chat).includes('sk-test') && !JSON.stringify(context.extensionSettings).includes('sk-test'), 'Key absent from saved chat/settings');
+    check(!JSON.stringify(context.chat).includes('sk-test'), 'Key absent from saved chat');
+    check(context.extensionSettings.clodex.savedKey === app.api.getKey(), 'Remembered key stored only in profile settings');
+    const savedProfile = JSON.parse(JSON.stringify(context.extensionSettings));
+    app.dispose(); context.extensionSettings = savedProfile; app = await initializeHarness(); await app.ready;
+    check(app.api.getKey() === 'sk-test-only-not-a-credential', 'Key restored after profile serialization and reinitialization');
+    check((await commands.get('clodex-img').callback({}, 'After reload')).startsWith('/user/files/'), 'Generation works after reload without re-entering key');
+    set('rememberKey', false);
+    check(!JSON.stringify(context.extensionSettings).includes('sk-test'), 'Disabling remember removes persisted key');
+    check(app.api.getKey() === 'sk-test-only-not-a-credential', 'Tab key stays usable after disabling persistence');
+    const memoryOnly = JSON.parse(JSON.stringify(context.extensionSettings));
+    app.dispose(); context.extensionSettings = memoryOnly; app = await initializeHarness(); await app.ready;
+    check(app.api.getKey() === '', 'Memory-only profile does not restore a key');
+    set('rememberKey', true);
+    app.root.querySelector('[data-role="key"]').value = 'sk-test-only-not-a-credential'; await app.refresh();
+    const quotaMethod = app.api.quota.bind(app.api);
+    const previousWallet = await quotaMethod();
+    let releaseQuota;
+    app.api.quota = () => new Promise(resolve => { releaseQuota = resolve; });
+    const pendingGeneration = commands.get('clodex-img').callback({}, 'Delayed balance response');
+    await waitFor(() => releaseQuota);
+    app.root.querySelector('[data-action="forget"]').click(); await waitFor(() => app.api.getKey() === '');
+    check(!JSON.stringify(context.extensionSettings).includes('sk-test'), 'Forget removes saved and in-memory extension keys');
+    releaseQuota(previousWallet); await pendingGeneration; app.api.quota = quotaMethod;
+    check(app.root.querySelector('[data-role="balance"]').textContent === '—', 'Delayed balance response cannot restore a forgotten wallet');
     results.textContent = `PASS — ${checks.length} browser integration checks\n${checks.join(' · ')}`;
     results.dataset.passed = String(checks.length);
 } catch (error) {

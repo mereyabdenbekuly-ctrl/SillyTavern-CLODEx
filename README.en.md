@@ -1,7 +1,7 @@
-# CLODEx for SillyTavern · 0.1.0
+# CLODEx for SillyTavern · 0.2.0
 
 Standalone, build-free UI extension for **SillyTavern 1.19.0+**. A CLODEx `sk-…`
-API key is required. **MVP / preview 0.1.0: the full requested specification is not complete.**
+API key is required. **MVP / preview 0.2.0: the full requested specification is not complete.**
 Acceptance in an installed SillyTavern instance and live paid-provider testing are still pending.
 No paid live generations were used in development; automated checks mock the API.
 
@@ -30,7 +30,7 @@ not a URL to `manifest.json` or a ZIP. Auto-updates require a Git installation.
 
 ## Features
 
-- Live `/v1/models`; public reference pricing, cache-read prices and API-key allowance.
+- Live `/v1/models`; public reference pricing, cache-read prices, wallet balance in USD/RUB and a separate API-key allowance (requires the matching backend patch).
 - One-click native **Custom OpenAI** configuration; RP presets and streaming remain native to SillyTavern.
 - `/clodex-img [prompt]`, `/clodex-video [prompt]`, `/clodex-say [text]` and per-message buttons.
 - `/clodex-video message=4 animate=true motion prompt` uses saved image bytes, never a localhost URL.
@@ -40,25 +40,37 @@ not a URL to `manifest.json` or a ZIP. Auto-updates require a Git installation.
 - Speech API and audio-file transcription into the composer, without automatically sending it.
 - RU/EN and responsive settings. Voice is implemented by this extension's own controls, not a built-in TTS provider.
 
-## Public metadata / CORS
+## Wallet and direct CORS
 
-On November 10, 2026, `/api/pricing` and `/api/status` did not expose browser CORS
-headers. To load prices and currency information, enable `enableCorsProxy: true`
-in your **private, protected** SillyTavern `config.yaml`, restart, and enable
-**Public metadata via SillyTavern proxy** in this extension. This proxy handles
-only two public GETs, with **no CLODEx key**. Never expose an unauthenticated proxy publicly.
+**At 0.2.0 publication the server patch is not deployed:** direct metadata
+access and the actual wallet on clodex.xyz are still blocked.
+See [CHANGELOG.md](CHANGELOG.md) for rollout status and verification limits.
 
-Without metadata, allowance is displayed in quota units and prices are unavailable.
-USD uses the server's quota conversion; RUB requires an explicitly identified RUB
-conversion. The new-api CNY exchange rate is never mislabeled as RUB.
-API-key allowance is not necessarily the account wallet. Unlimited keys do not imply free usage.
-A separate CLODEx server release enabling narrow public CORS is needed to remove this setup step.
+The matching backend patch must allow credentialless browser GET/OPTIONS on exactly
+`/api/pricing`, `/api/status`, `/api/usage/token/`. Wallet requests still require a
+Bearer key. New fields include `wallet_balance_usd`, `wallet_balance_rub`,
+`quota_per_unit` and `usd_to_rub`; an unlimited key never means an unlimited wallet.
+The legacy server fallback is explicitly labelled as a key allowance, not a wallet.
+
+Publishing the extension does not deploy the backend. The old optional public
+metadata proxy remains available for legacy servers only; it requires local
+`enableCorsProxy`, sends no CLODEx key and cannot fix the legacy protected
+usage-endpoint CORS. Normally leave it off once the backend patch is deployed.
 
 ## Safety and limits
 
-The media key stays only in tab memory. Re-enter after a reload. **Use for chat**
-separately saves it in SillyTavern's native server Secrets; **Forget tab key** does
-not delete that secret. All installed extensions share browser access.
+**Remember key in SillyTavern** defaults on. The key is saved **unencrypted** in
+`extensionSettings.clodex.savedKey`, restored on reload, and the catalog/balance
+refresh automatically. It is accessible to your SillyTavern server, installed
+extensions and settings backups. Use a trusted access-protected server. Disabling
+the checkbox removes the persisted key and keeps only this tab's in-memory copy.
+Chat messages/exports and browser localStorage/sessionStorage do not contain it.
+
+**Forget saved key** clears both the profile and in-memory extension key. **Use for
+chat** separately writes the native Custom OpenAI secret; delete that secret in
+SillyTavern if needed. The extension does not enable global `allowKeysExposure`.
+Previous Custom OpenAI header/body overrides can be cleared with separate consent;
+back up your old connection as a preset first. Declining leaves it unchanged.
 
 Automatic generation and tools default off. Auto images run at most once per
 minute and once per message, with no automatic retry. Tools always ask for consent.

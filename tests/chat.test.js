@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { activateTextModel, attachMedia, captureTarget, DEFAULT_SETTINGS, imageFromBase64, loadSettings,
-    localMediaPath, saveMedia, sceneContext, targetIsCurrent } from '../src/chat.js';
+    localMediaPath, saveMedia, sceneContext, targetIsCurrent, storeKey } from '../src/chat.js';
 import { GenerationController } from '../src/controller.js';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a33sAAAAASUVORK5CYII=';
@@ -34,6 +34,29 @@ test('settings drop unknown/secret fields and default paid automation and tools 
     const settings = loadSettings(context);
     assert.equal(settings.imageModel, 'img'); assert.equal(settings.autoImages, false);
     assert.equal(settings.toolVideos, false); assert.ok(!JSON.stringify(settings).includes(KEY));
+});
+
+test('remembered key survives profile serialization and can be removed without touching chat', () => {
+    const context = { extensionSettings: {}, chat: [{ mes: 'hello' }] };
+    const settings = loadSettings(context);
+    assert.equal(settings.rememberKey, true);
+    storeKey(settings, KEY);
+    const restored = loadSettings({ extensionSettings: JSON.parse(JSON.stringify(context.extensionSettings)) });
+    assert.equal(restored.savedKey, KEY);
+    assert.ok(!JSON.stringify(context.chat).includes(KEY));
+    storeKey(restored, '');
+    assert.equal(restored.savedKey, '');
+});
+
+test('memory-only mode and malformed saved keys never restore a credential', () => {
+    const settings = { ...DEFAULT_SETTINGS, rememberKey: false, savedKey: KEY };
+    storeKey(settings, KEY);
+    assert.equal(settings.savedKey, '');
+    assert.equal(loadSettings({ extensionSettings: { clodex: { rememberKey: false, savedKey: KEY } } }).savedKey, '');
+    assert.equal(loadSettings({ extensionSettings: { clodex: { savedKey: 'invalid' } } }).savedKey, '');
+    settings.rememberKey = true;
+    storeKey(settings, KEY);
+    assert.equal(settings.savedKey, KEY);
 });
 
 test('target identity detects chat switches, swipes, deletion and edits', () => {
@@ -215,11 +238,35 @@ test('text activation uses native controls and server secrets, not slash interpo
     assert.equal(fields.get('#custom_api_url_text').value, 'https://clodex.xyz/v1');
 });
 
-test('text activation refuses legacy header/body overrides without overwriting them or the secret', async () => {
+test('declining override reset leaves previous connection and secrets untouched', async () => {
     let writes = 0;
     const originalHeaders = 'Authorization: old-key';
     const context = { chatCompletionSettings: { custom_include_headers: originalHeaders } };
-    await assert.rejects(activateTextModel(context, { model: 'm', key: KEY,
-        document: { querySelector: () => ({}) }, writeSecret: async () => { writes++; return 'id'; } }), /overrides/);
+    assert.equal(await activateTextModel(context, { model: 'm', key: KEY,
+        document: { querySelector: () => ({}) }, writeSecret: async () => { writes++; return 'id'; },
+        confirmResetOverrides: async () => false }), false);
     assert.equal(writes, 0); assert.equal(context.chatCompletionSettings.custom_include_headers, originalHeaders);
+});
+
+test('confirmed switch clears all previous overrides in settings and native inputs', async () => {
+    const names = ['custom_include_headers', 'custom_include_body', 'custom_exclude_body'];
+    const context = { chatCompletionSettings: Object.fromEntries(names.map(n => [n, 'previous value'])), saveSettingsDebounced() {} };
+    const fields = new Map();
+    const document = { querySelector: id => {
+        if (!fields.has(id)) fields.set(id, { value: 'previous value', dispatchEvent() {}, click() {} });
+        return fields.get(id);
+    } };
+    let confirmations = 0;
+    assert.equal(await activateTextModel(context, { model: 'm', key: KEY, document, writeSecret: async () => 'id',
+        confirmResetOverrides: async () => { confirmations++; return true; } }), true);
+    assert.equal(confirmations, 1);
+    for (const name of names) { assert.equal(context.chatCompletionSettings[name], ''); assert.equal(fields.get(`#${name}`).value, ''); }
+    assert.equal(context.chatCompletionSettings.custom_model, 'm');
+});
+
+test('failed native secret write does not destroy confirmed old provider overrides', async () => {
+    const context = { chatCompletionSettings: { custom_include_body: 'old-body' } };
+    await assert.rejects(activateTextModel(context, { model: 'm', key: KEY, document: { querySelector: () => ({}) },
+        writeSecret: async () => null, confirmResetOverrides: async () => true }), /save the key/);
+    assert.equal(context.chatCompletionSettings.custom_include_body, 'old-body');
 });

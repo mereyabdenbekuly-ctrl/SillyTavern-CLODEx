@@ -1,6 +1,6 @@
 import { ApiError, ClodexApi, redact, validateKey } from './api.js';
-import { normalizeCatalog, priceView, quotaView } from './catalog.js';
-import { activateTextModel, captureTarget, jobsFor, loadSettings, localMediaPath } from './chat.js';
+import { normalizeCatalog, priceView, quotaView, walletView } from './catalog.js';
+import { activateTextModel, captureTarget, jobsFor, loadSettings, localMediaPath, storeKey } from './chat.js';
 import { GenerationController } from './controller.js';
 
 export async function initialize({ getContext = () => globalThis.SillyTavern.getContext(),
@@ -22,7 +22,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
     if (!parent) throw new Error('Missing SillyTavern extension container.');
     parent.append(root);
     const find = selector => root.querySelector(selector);
-    let key = '';
+    let key = settings.savedKey;
     let catalog = [];
     let quota = null;
     let metadata = null;
@@ -110,12 +110,19 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
 
     function renderBalance() {
         find('[data-role="balance"]').textContent = '—'; find('[data-role="rub"]').textContent = '—';
+        find('[data-role="balance-label"]').textContent = t('wallet');
+        find('[data-role="allowance"]').textContent = '';
         if (!quota) return;
         const value = quotaView(quota, metadata);
-        find('[data-role="balance"]').textContent = value.unlimited ? t('unlimited') : value.usd === null
+        const wallet = walletView(quota, metadata);
+        const allowance = value.unlimited ? t('unlimited') : value.usd === null
             ? t('units', { value: value.units.toLocaleString(locale()) }) : money(value.usd);
-        find('[data-role="rub"]').textContent = value.unlimited || value.rub === null ? '—'
-            : new Intl.NumberFormat(locale(), { style: 'currency', currency: 'RUB' }).format(value.rub);
+        find('[data-role="balance-label"]').textContent = t(wallet ? 'wallet' : 'legacyQuota');
+        find('[data-role="balance"]').textContent = wallet ? money(wallet.usd) : allowance;
+        const rub = wallet ? wallet.rub : value.unlimited ? null : value.rub;
+        find('[data-role="rub"]').textContent = rub === null ? '—'
+            : new Intl.NumberFormat(locale(), { style: 'currency', currency: 'RUB' }).format(rub);
+        find('[data-role="allowance"]').textContent = wallet ? t('keyAllowance', { value: allowance }) : t('walletUnavailable');
     }
 
     function renderStatic() {
@@ -193,6 +200,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             const next = validateKey(entered);
             if (next !== key) { controller.cancel(); speechAbort?.abort(); }
             key = next; find('[data-role="key"]').value = '';
+            storeKey(settings, key); getContext().saveSettingsDebounced();
         }
         validateKey(key);
         refreshAbort?.abort(); refreshAbort = new AbortController();
@@ -225,18 +233,28 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             if (id) { lastSecretId = id; lastSecretKey = value; }
             return id;
         });
-        await activateTextModel(getContext(), { model, key, writeSecret: saver, document });
+        if (!await activateTextModel(getContext(), { model, key, writeSecret: saver, document,
+            confirmResetOverrides: () => confirm(t('resetOverridesConfirm')) })) return;
         settings.textModel = model; getContext().saveSettingsDebounced(); renderSelectors();
         status(t('activated', { model }));
+    }
+
+    async function refreshBalance() {
+        const requestKey = key;
+        if (!requestKey || disposed) return;
+        try {
+            const next = await api.quota();
+            // A response from a forgotten/replaced key must not restore its wallet UI.
+            if (disposed || key !== requestKey) return;
+            quota = next; renderBalance();
+        } catch { /* Keep the last known balance on a temporary network failure. */ }
     }
 
     async function generate(kind, options) {
         validateKey(key);
         if (speechAbort) throw new ApiError('Transcription is already running.');
         const result = await controller.run(kind, options);
-        if (result && key) {
-            try { quota = await api.quota(); renderBalance(); } catch { /* Keep the last known allowance. */ }
-        }
+        if (result) await refreshBalance();
         return result;
     }
 
@@ -260,6 +278,7 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             input.value = [input.value, text].filter(Boolean).join('\n');
             input.dispatchEvent(new Event('input', { bubbles: true }));
             status(t('transcribed'));
+            await refreshBalance();
         } finally { speechAbort = null; }
     }
 
@@ -319,13 +338,16 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
             field.value = settings[name]; report(new Error('Video seconds must be an integer from 1 to 60.')); return;
         }
         if (typeof value === 'string') value = value.slice(0, 200);
-        settings[name] = value; getContext().saveSettingsDebounced();
+        settings[name] = value;
+        if (name === 'rememberKey') storeKey(settings, key);
+        getContext().saveSettingsDebounced();
         if (name === 'toolImages' || name === 'toolVideos') registerTools();
         if (name === 'language') renderStatic(); else renderMessages();
     });
     const actions = { refresh, activate: () => activate(), transcribe, forget: () => {
         controller.cancel(); refreshAbort?.abort(); speechAbort?.abort();
         key = ''; lastSecretKey = ''; lastSecretId = ''; quota = null; catalog = []; metadata = null;
+        storeKey(settings, ''); getContext().saveSettingsDebounced();
         find('[data-role="key"]').value = ''; renderStatic(); status(t('forgotten'));
     } };
     for (const element of root.querySelectorAll('[data-action]')) element.addEventListener('click', () => {
@@ -350,7 +372,8 @@ export async function initialize({ getContext = () => globalThis.SillyTavern.get
         renderMessages();
     });
     registerCommands(); registerTools(); renderStatic();
-    return { root, api, controller, refresh, renderMessages,
+    const ready = key ? refresh().catch(report) : Promise.resolve();
+    return { root, api, controller, refresh, renderMessages, ready,
         dispose() {
             disposed = true; controller.cancel(); refreshAbort?.abort(); speechAbort?.abort();
             for (const [type, callback] of events) context.eventSource.removeListener?.(type, callback);

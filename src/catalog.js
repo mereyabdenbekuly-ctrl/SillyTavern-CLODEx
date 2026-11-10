@@ -44,7 +44,7 @@ export function priceView(price) {
 export function quotaView(payload, metadata) {
     const quota = payload?.data;
     if (!quota || !finite(quota.total_available)) throw new Error('Invalid API key quota response.');
-    const unit = metadata?.data?.quota_per_unit;
+    const unit = quota.quota_per_unit ?? metadata?.data?.quota_per_unit;
     const usd = finite(unit) && unit > 0 ? quota.total_available / unit : null;
     const status = metadata?.data;
     // usd_exchange_rate is CNY in new-api; it must NEVER be presented as a RUB rate.
@@ -54,4 +54,17 @@ export function quotaView(payload, metadata) {
     return { unlimited: quota.unlimited_quota === true, units: quota.total_available, usd,
         rub: usd !== null && rubRate !== null ? usd * rubRate : null,
         expiresAt: quota.expires_at > 0 ? quota.expires_at : null };
+}
+
+export function walletView(payload, metadata) {
+    const wallet = payload?.data;
+    const signed = value => typeof value === 'number' && Number.isFinite(value);
+    if (!wallet || !signed(wallet.wallet_balance_usd)) return null;
+    const usd = wallet.wallet_balance_usd;
+    const status = metadata?.data;
+    const rate = finite(wallet.usd_to_rub) && wallet.usd_to_rub > 0 ? wallet.usd_to_rub
+        : ['₽', 'RUB', 'руб', 'руб.'].includes(status?.custom_currency_symbol)
+            && finite(status?.custom_currency_exchange_rate) && status.custom_currency_exchange_rate > 0
+            ? status.custom_currency_exchange_rate : null;
+    return { usd, rub: signed(wallet.wallet_balance_rub) ? wallet.wallet_balance_rub : rate === null ? null : usd * rate };
 }

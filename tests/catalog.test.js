@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modelKinds, normalizeCatalog, priceView, quotaView } from '../src/catalog.js';
+import { modelKinds, normalizeCatalog, priceView, quotaView, walletView } from '../src/catalog.js';
 
 test('catalog uses only live authorized model IDs, enriched by public prices', () => {
     const data = normalizeCatalog({ data: [{ id: 'custom-image', supported_endpoint_types: ['image-generation'] }, { id: 'text' }, { id: 'text' }] },
@@ -45,4 +45,22 @@ test('CNY exchange rate is never presented as RUB; unlimited does not imply a wa
     const value = quotaView({ data: { total_available: 0, unlimited_quota: true } }, { data: { quota_per_unit: 500000, usd_exchange_rate: 7, custom_currency_symbol: '¥', custom_currency_exchange_rate: 7 } });
     assert.equal(value.rub, null); assert.equal(value.unlimited, true);
     assert.throws(() => quotaView({ data: { total_available: -1 } }));
+});
+
+test('wallet balance is independent of unlimited or finite key allowance and needs no public metadata', () => {
+    const data = { total_available: 0, unlimited_quota: true, wallet_balance_usd: 4.5,
+        wallet_balance_rub: 365.625, usd_to_rub: 81.25, quota_per_unit: 500000 };
+    assert.deepEqual(walletView({ data }), { usd: 4.5, rub: 365.625 });
+    data.total_available = 500; data.unlimited_quota = false;
+    assert.deepEqual(walletView({ data }), { usd: 4.5, rub: 365.625 });
+    assert.equal(quotaView({ data }).usd, 0.001);
+});
+
+test('wallet parser preserves zero/debt, never invents funds or a RUB exchange rate', () => {
+    assert.equal(walletView({ data: { total_available: 100000, unlimited_quota: true } }), null);
+    assert.equal(walletView({ data: { wallet_balance_usd: '4.5' } }), null);
+    assert.equal(walletView({ data: { wallet_balance_usd: Infinity } }), null);
+    assert.deepEqual(walletView({ data: { wallet_balance_usd: 0, usd_to_rub: 81.25 } }), { usd: 0, rub: 0 });
+    assert.deepEqual(walletView({ data: { wallet_balance_usd: -1, usd_to_rub: 81.25 } }), { usd: -1, rub: -81.25 });
+    assert.deepEqual(walletView({ data: { wallet_balance_usd: 4.5 } }, { data: { usd_exchange_rate: 7, custom_currency_symbol: '¥', custom_currency_exchange_rate: 7 } }), { usd: 4.5, rub: null });
 });

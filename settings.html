@@ -1,7 +1,7 @@
 <div id="clodex-settings" class="extension_container">
   <div class="inline-drawer">
     <div class="inline-drawer-toggle inline-drawer-header">
-      <b>CLODEx <span class="clodex-badge">0.1.0</span></b>
+      <b>CLODEx <span class="clodex-badge">0.2.0</span></b>
       <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
     </div>
     <div class="inline-drawer-content">
@@ -10,10 +10,12 @@
           <label><span class="clodex-sr-only" data-clodex-i18n="language"></span><select data-setting="language" class="text_pole"><option value="auto">Auto</option><option value="ru-ru">RU</option><option value="en-us">EN</option></select></label>
         </div>
         <label class="clodex-field"><span data-clodex-i18n="key"></span><input data-role="key" class="text_pole" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…"></label>
+        <label class="checkbox_label"><input type="checkbox" data-setting="rememberKey"><span data-clodex-i18n="rememberKey"></span></label>
         <p class="clodex-help" data-clodex-i18n="keyHelp"></p>
         <div class="clodex-actions"><button class="menu_button clodex-primary" data-action="refresh" data-clodex-i18n="connect"></button><button class="menu_button" data-action="forget" data-clodex-i18n="forget"></button></div>
         <p data-role="status" class="clodex-status" role="status" aria-live="polite"></p>
-        <div class="clodex-balance"><div><small data-clodex-i18n="quota"></small><strong data-role="balance">—</strong></div><div><small data-clodex-i18n="rubEstimate"></small><strong data-role="rub">—</strong></div></div>
+        <div class="clodex-balance"><div><small data-role="balance-label" data-clodex-i18n="wallet"></small><strong data-role="balance">—</strong></div><div><small data-clodex-i18n="rubEstimate"></small><strong data-role="rub">—</strong></div></div>
+        <p class="clodex-help" data-role="allowance"></p>
         <p class="clodex-help" data-clodex-i18n="quotaHelp"></p>
         <label class="checkbox_label"><input type="checkbox" data-setting="publicMetadataProxy"><span data-clodex-i18n="proxy"></span></label>
         <p class="clodex-help" data-clodex-i18n="proxyHelp"></p>
